@@ -57,6 +57,66 @@ class TestParseMode:
     def test_nonexistent_file(self, tmp_path: Path) -> None:
         assert parse_mode_file(tmp_path / "nonexistent.md") is None
 
+    def test_parse_allowed_transitions(self, tmp_path: Path) -> None:
+        """parse_mode_file must extract allowed_transitions from mode: section."""
+        mode_file = tmp_path / "strict.md"
+        mode_file.write_text(
+            textwrap.dedent("""\
+                ---
+                mode:
+                  name: strict
+                  description: Strict mode
+                  allowed_transitions:
+                    - plan
+                    - review
+                  default_action: block
+                ---
+                # Strict Mode
+                You are in strict mode.
+            """),
+            encoding="utf-8",
+        )
+        result = parse_mode_file(mode_file)
+        assert result is not None
+        assert result.allowed_transitions == ["plan", "review"]
+
+    def test_parse_allowed_transitions_absent_defaults_to_none(
+        self, tmp_path: Path
+    ) -> None:
+        """When allowed_transitions is absent, parse_mode_file must return None (not [])."""
+        mode_file = _create_mode_file(tmp_path, "basic", "Basic mode")
+        result = parse_mode_file(mode_file)
+        assert result is not None
+        assert result.allowed_transitions is None
+
+    def test_parse_allow_clear_false(self, tmp_path: Path) -> None:
+        """parse_mode_file must extract allow_clear=False from mode: section."""
+        mode_file = tmp_path / "locked.md"
+        mode_file.write_text(
+            textwrap.dedent("""\
+                ---
+                mode:
+                  name: locked
+                  description: Locked mode
+                  allow_clear: false
+                  default_action: block
+                ---
+                # Locked Mode
+                You are in locked mode.
+            """),
+            encoding="utf-8",
+        )
+        result = parse_mode_file(mode_file)
+        assert result is not None
+        assert result.allow_clear is False
+
+    def test_parse_allow_clear_absent_defaults_to_true(self, tmp_path: Path) -> None:
+        """When allow_clear is absent, parse_mode_file must default to True."""
+        mode_file = _create_mode_file(tmp_path, "basic2", "Basic mode")
+        result = parse_mode_file(mode_file)
+        assert result is not None
+        assert result.allow_clear is True
+
 
 class TestModeDiscovery:
     """Tests for ModeDiscovery search path behavior."""

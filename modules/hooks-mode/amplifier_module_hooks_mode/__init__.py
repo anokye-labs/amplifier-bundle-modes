@@ -101,6 +101,8 @@ def parse_mode_file(file_path: Path) -> ModeDefinition | None:
         confirm_tools=tools_config.get("confirm", []),
         block_tools=tools_config.get("block", []),
         default_action=mode_config.get("default_action", "block"),
+        allowed_transitions=mode_config.get("allowed_transitions"),
+        allow_clear=mode_config.get("allow_clear", True),
     )
 
 
