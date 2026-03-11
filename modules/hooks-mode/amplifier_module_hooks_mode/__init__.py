@@ -402,6 +402,47 @@ class ModeHooks:
 
         return mode
 
+    def _resolve_mentions(self, content: str) -> str:
+        """Resolve @namespace:path mentions in mode context content.
+
+        Lines that consist solely of an @-mention (e.g. ``@superpowers:context/foo.md``)
+        are replaced with the content of the referenced file.  Lines whose mention
+        cannot be resolved are removed rather than left as raw text so that the LLM
+        never sees an unresolvable reference.
+
+        The method is a no-op when:
+        - the content contains no ``@`` character (fast path), or
+        - no ``mention_resolver`` capability is registered on the coordinator.
+        """
+        if "@" not in content:
+            return content
+
+        resolver = self.coordinator.get_capability("mention_resolver")
+        if not resolver:
+            return content
+
+        def _replace(match: re.Match) -> str:  # type: ignore[type-arg]
+            mention = match.group(1)
+            try:
+                resolved_path = resolver.resolve(mention)
+                if resolved_path is None:
+                    logger.warning(
+                        "mode @-mention resolution: could not resolve '%s' — line removed",
+                        mention,
+                    )
+                    return ""
+                file_content = Path(resolved_path).read_text(encoding="utf-8")
+                return file_content
+            except Exception as exc:
+                logger.warning(
+                    "mode @-mention resolution: failed to read '%s': %s — line removed",
+                    mention,
+                    exc,
+                )
+                return ""
+
+        return re.sub(r"^\s*(@\S+:\S+)\s*$", _replace, content, flags=re.MULTILINE)
+
     async def handle_provider_request(self, _event: str, _data: dict) -> "HookResult":
         """Inject mode context on every provider request."""
         from amplifier_core.models import HookResult
@@ -410,6 +451,9 @@ class ModeHooks:
         if not mode or not mode.context:
             return HookResult(action="continue")
 
+        # Resolve any @namespace:path mentions in the mode body before injection
+        resolved_context = self._resolve_mentions(mode.context)
+
         # Wrap context in system-reminder tags with explicit MODE ACTIVE banner
         context_block = (
             f'<system-reminder source="mode-{mode.name}">\n'
@@ -417,7 +461,7 @@ class ModeHooks:
             f"You are CURRENTLY in {mode.name} mode. It is already active — "
             f'do NOT call mode(set, "{mode.name}") to re-activate it. '
             f"Follow the guidance below.\n\n"
-            f"{mode.context}\n"
+            f"{resolved_context}\n"
             f"</system-reminder>"
         )
 
